@@ -36,11 +36,27 @@ export async function getNextInterviewerMessage({
     ? `\nCandidate name: ${candidateName}.\nCandidate experience: ${candidateExperience ?? 0} years.\nThis information was already collected at registration — do NOT ask the candidate for their name or years of experience. Greet them by name if this is the start of the interview, and use their stated experience level to calibrate question difficulty.`
     : "";
 
-  const fullSystemPrompt = `${systemPrompt}
+  const normalizedDifficulty = ["Easy", "Medium", "Hard"].includes(difficulty) ? difficulty : "Medium";
+
+  const DIFFICULTY_GUIDANCE = {
+    Easy: "Ask fundamental, entry-level questions. Focus on core definitions, basic syntax, and everyday usage. Avoid edge cases, internals, system design, or trick questions. Keep questions approachable and confidence-building for a beginner.",
+    Medium: "Ask intermediate questions that go beyond definitions into applied reasoning: how and why something works, common pitfalls, and practical trade-offs. Assume solid working knowledge but do not require deep internals or large-scale system design.",
+    Hard: "Ask advanced, expert-level questions: internals, performance/scalability trade-offs, architecture and system design, debugging subtle edge cases, and 'why would you choose X over Y' style reasoning. Push follow-ups that probe depth, not just recall.",
+  };
+
+  // Difficulty is stated as its own governing directive at the very top of
+  // the prompt (and reiterated below) so the model treats it as a hard
+  // constraint rather than a trailing detail it can drift from over a long
+  // conversation.
+  const fullSystemPrompt = `DIFFICULTY LEVEL: ${normalizedDifficulty.toUpperCase()}
+${DIFFICULTY_GUIDANCE[normalizedDifficulty]}
+Every question you ask for the rest of this interview MUST match the ${normalizedDifficulty} difficulty level described above, regardless of anything the base instructions below say about difficulty.
+
+${systemPrompt}
 ${candidateContext}
 
 Time remaining: approximately ${minutesLeft} minutes.
-Difficulty level: ${difficulty}.
+Reminder: difficulty level for every question is ${normalizedDifficulty}.
 Only mention time or wrap up when minutesLeft is below 5.
 Respond in plain conversational text only. Do NOT use markdown formatting (no asterisks, no bullet points, no headings).`;
 

@@ -17,42 +17,16 @@ function setRefreshCookie(res, token) {
   });
 }
 
-// @route POST /api/auth/register  (candidate self-registration)
+// @route POST /api/auth/register
+// Self-registration is disabled — candidate accounts are now created only
+// by an admin (see POST /api/admin/candidates). This route is kept (rather
+// than removed) so it responds with a clear, actionable error instead of a
+// generic 404 if anything still links to it.
 export const registerCandidate = asyncHandler(async (req, res) => {
-  const {
-    firstName,
-    lastName,
-    email,
-    mobile,
-    password,
-    experience,
-    technology,
-    resumeUrl,
-  } = req.body;
-
-  const existing = await User.findOne({ email });
-  if (existing) throw new ApiError(409, "Email is already registered");
-
-  const user = await User.create({
-    firstName,
-    lastName,
-    email,
-    mobile,
-    password,
-    experience,
-    technology,
-    resumeUrl,
-    roleType: "CANDIDATE",
-    profileCompleted: true,
-  });
-
-  const accessToken = generateAccessToken(user);
-  const refreshToken = generateRefreshToken(user);
-  user.refreshTokens.push(refreshToken);
-  await user.save();
-
-  setRefreshCookie(res, refreshToken);
-  res.status(201).json({ success: true, user: user.toSafeObject(), accessToken });
+  throw new ApiError(
+    403,
+    "Self-registration is disabled. Please contact your administrator to have a candidate account created for you."
+  );
 });
 
 // @route POST /api/auth/login

@@ -3,6 +3,7 @@ import User from "../models/User.js";
 import Interview from "../models/Interview.js";
 import Score from "../models/Score.js";
 import { ApiError } from "../utils/apiError.js";
+import { logAudit } from "../utils/auditLogger.js";
 
 // @route GET /api/admin/dashboard
 export const getDashboard = asyncHandler(async (req, res) => {
@@ -75,6 +76,54 @@ export const listInterviews = asyncHandler(async (req, res) => {
   const total = await Interview.countDocuments(query);
 
   res.json({ success: true, interviews, total, page: Number(page), limit: Number(limit) });
+});
+
+// @route POST /api/admin/candidates  (admin creates a candidate account)
+export const createCandidate = asyncHandler(async (req, res) => {
+  const {
+    firstName,
+    lastName,
+    email,
+    mobile,
+    password,
+    experience,
+    technology,
+    currentCompany,
+    currentCTC,
+    expectedCTC,
+    noticePeriod,
+    resumeUrl,
+  } = req.body;
+
+  const existing = await User.findOne({ email });
+  if (existing) throw new ApiError(409, "Email is already registered");
+
+  const candidate = await User.create({
+    firstName,
+    lastName,
+    email,
+    mobile,
+    password,
+    experience,
+    technology,
+    currentCompany,
+    currentCTC,
+    expectedCTC,
+    noticePeriod,
+    resumeUrl,
+    roleType: "CANDIDATE",
+    profileCompleted: true,
+  });
+
+  await logAudit({
+    actor: req.user._id,
+    action: "CANDIDATE_CREATED_BY_ADMIN",
+    entityType: "User",
+    entityId: candidate._id,
+    ipAddress: req.ip,
+  });
+
+  res.status(201).json({ success: true, candidate: candidate.toSafeObject() });
 });
 
 // @route PUT /api/admin/candidates/:id/deactivate
