@@ -4,15 +4,19 @@ import Interview from "../models/Interview.js";
 import Score from "../models/Score.js";
 import { ApiError } from "../utils/apiError.js";
 import { logAudit } from "../utils/auditLogger.js";
+import { generateTempPassword, sha256Hex } from "../utils/password.js";
+import { createNotification } from "../services/notificationService.js";
+import { emailTemplates } from "../services/emailService.js";
 
 // @route GET /api/admin/dashboard
 export const getDashboard = asyncHandler(async (req, res) => {
-  const [totalCandidates, scheduledInterviews, completedInterviews, pendingInterviews] =
+  const [totalCandidates, scheduledInterviews, completedInterviews, pendingInterviews, missedInterviews] =
     await Promise.all([
       User.countDocuments({ roleType: "CANDIDATE" }),
       Interview.countDocuments({ status: { $in: ["SCHEDULED", "RESCHEDULED"] } }),
       Interview.countDocuments({ status: "COMPLETED" }),
       Interview.countDocuments({ status: "SCHEDULED", scheduledDate: { $lt: new Date() } }),
+      Interview.countDocuments({ status: "EXPIRED" }),
     ]);
 
   const recentInterviews = await Interview.find({})
@@ -28,6 +32,7 @@ export const getDashboard = asyncHandler(async (req, res) => {
       scheduledInterviews,
       completedInterviews,
       pendingInterviews,
+      missedInterviews,
     },
     recentInterviews,
   });
@@ -98,12 +103,19 @@ export const createCandidate = asyncHandler(async (req, res) => {
   const existing = await User.findOne({ email });
   if (existing) throw new ApiError(409, "Email is already registered");
 
+  let generatedPassword = null;
+  let hashedPassword = password;
+  if (!password) {
+    generatedPassword = generateTempPassword();
+    hashedPassword = sha256Hex(generatedPassword);
+  }
+
   const candidate = await User.create({
     firstName,
     lastName,
     email,
     mobile,
-    password,
+    password: hashedPassword,
     experience,
     technology,
     currentCompany,
@@ -122,6 +134,19 @@ export const createCandidate = asyncHandler(async (req, res) => {
     entityId: candidate._id,
     ipAddress: req.ip,
   });
+
+  if (generatedPassword) {
+    const loginUrl = `${(process.env.CLIENT_URL || "http://localhost:5173").replace(/\/$/, "")}/login`;
+    const { subject, html } = emailTemplates.candidateWelcome(candidate.firstName, candidate.email, generatedPassword, loginUrl);
+    await createNotification({
+      user: candidate._id,
+      type: "GENERAL",
+      title: "Welcome to the AI Interview Platform",
+      message: "Your candidate account has been created. Check your email for login credentials.",
+      sendAsEmail: true,
+      emailHtml: { to: candidate.email, subject, html },
+    });
+  }
 
   res.status(201).json({ success: true, candidate: candidate.toSafeObject() });
 });

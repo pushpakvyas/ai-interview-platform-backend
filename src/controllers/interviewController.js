@@ -1,22 +1,31 @@
 import asyncHandler from "express-async-handler";
+import fs from "fs";
+import path from "path";
 import Interview from "../models/Interview.js";
 import InterviewQuestion from "../models/InterviewQuestion.js";
 import Transcript from "../models/Transcript.js";
 import Score from "../models/Score.js";
+import Recording from "../models/Recording.js";
 import TechnologyTemplate from "../models/TechnologyTemplate.js";
+import JobRole from "../models/JobRole.js";
 import User from "../models/User.js";
 import { ApiError } from "../utils/apiError.js";
 import { getNextInterviewerMessage, evaluateInterviewTranscript } from "../services/aiService.js";
 import { createNotification } from "../services/notificationService.js";
 import { emailTemplates } from "../services/emailService.js";
 import { logAudit } from "../utils/auditLogger.js";
-import fs from "fs";
-import path from "path";
-import Recording from "../models/Recording.js";
+import { generateTempPassword, sha256Hex } from "../utils/password.js";
 import { TRANSCRIPTS_DIR } from "../config/multer.js";
 import { toPublicUrl } from "./recordingController.js";
 
 const MAX_WARNINGS = 3;
+const DEFAULT_EVALUATION_CRITERIA = [
+  "Technical Knowledge",
+  "Communication",
+  "Domain Knowledge",
+  "Confidence",
+  "Clarity",
+];
 
 function combineDateTime(date, time) {
   const [hours, minutes] = time.split(":").map(Number);
@@ -25,24 +34,98 @@ function combineDateTime(date, time) {
   return d;
 }
 
+function loginUrl() {
+  return `${(process.env.CLIENT_URL || "http://localhost:5173").replace(/\/$/, "")}/login`;
+}
+
+// Blends multiple Skill docs' prompt fragments into one set of instructions
+// so a job-role interview (e.g. MERN Stack Developer, or any other role made
+// of several skills) plays out as a single session covering all of them,
+// rather than separate per-skill rounds.
+function buildCombinedSystemPrompt(roleName, skills) {
+  const skillNames = skills.map((s) => s.name).join(", ");
+  const sections = skills.map((s) => `### ${s.name}\n${s.systemPromptFragment}`).join("\n\n");
+  return (
+    `You are conducting a single technical interview for a ${roleName} position, which requires proficiency in: ${skillNames}. ` +
+    `Blend questions naturally across all of these areas over the course of the interview rather than treating them as separate rounds — aim for a reasonably balanced mix.\n\n${sections}`
+  );
+}
+
 // ==================== ADMIN: SCHEDULING ====================
 
 // @route POST /api/interviews  (admin schedules)
 export const scheduleInterview = asyncHandler(async (req, res) => {
-  const { candidateId, technology, scheduledDate, scheduledTime, duration, difficulty } = req.body;
+  const { candidateId, newCandidate, technology, jobRoleId, scheduledDate, scheduledTime, duration, difficulty } = req.body;
 
-  const candidate = await User.findOne({ _id: candidateId, roleType: "CANDIDATE" });
-  if (!candidate) throw new ApiError(404, "Candidate not found");
+  if (!candidateId && !newCandidate) {
+    throw new ApiError(400, "Provide either an existing candidateId or newCandidate details");
+  }
+  if (!technology && !jobRoleId) {
+    throw new ApiError(400, "Provide either a technology or a jobRoleId");
+  }
 
-  const template = await TechnologyTemplate.findOne({ technology, isActive: true });
-  if (!template) throw new ApiError(404, `No active template found for technology: ${technology}`);
+  let candidate;
+  let generatedPassword = null;
+
+  if (newCandidate) {
+    const { firstName, lastName, email, mobile, experience, skills } = newCandidate;
+    if (!firstName || !lastName || !email) {
+      throw new ApiError(400, "newCandidate requires at least firstName, lastName, and email");
+    }
+    const existing = await User.findOne({ email });
+    if (existing) throw new ApiError(409, "Email is already registered");
+
+    generatedPassword = generateTempPassword();
+    candidate = await User.create({
+      firstName,
+      lastName,
+      email,
+      mobile: mobile || "N/A",
+      password: sha256Hex(generatedPassword),
+      experience: experience || 0,
+      technology: skills || [],
+      roleType: "CANDIDATE",
+      profileCompleted: true,
+    });
+
+    await logAudit({
+      actor: req.user._id,
+      action: "CANDIDATE_CREATED_BY_ADMIN",
+      entityType: "User",
+      entityId: candidate._id,
+      ipAddress: req.ip,
+    });
+  } else {
+    candidate = await User.findOne({ _id: candidateId, roleType: "CANDIDATE" });
+    if (!candidate) throw new ApiError(404, "Candidate not found");
+  }
+
+  let jobRole = null;
+  let template = null;
+  let skillDocs = [];
+  if (jobRoleId) {
+    jobRole = await JobRole.findOne({ _id: jobRoleId, isActive: true }).populate("skills");
+    if (!jobRole) throw new ApiError(404, "Job role not found");
+    skillDocs = jobRole.skills.filter((s) => s.isActive);
+    if (!skillDocs.length) throw new ApiError(404, `No active skills found for role: ${jobRole.name}`);
+  } else {
+    template = await TechnologyTemplate.findOne({ technology, isActive: true });
+    if (!template) throw new ApiError(404, `No active template found for technology: ${technology}`);
+  }
+
+  const displayTechnology = jobRole ? jobRole.name : technology;
+  const skillNames = jobRole ? skillDocs.map((s) => s.name) : [technology];
+  const systemPromptUsed = jobRole ? buildCombinedSystemPrompt(jobRole.name, skillDocs) : template.defaultSystemPrompt;
+  const evaluationCriteria = jobRole
+    ? [...new Set(skillDocs.flatMap((s) => s.evaluationCriteria))]
+    : template.evaluationCriteria;
 
   const newDuration = duration || 30;
   const newStart = combineDateTime(scheduledDate, scheduledTime);
   const newEnd = new Date(newStart.getTime() + newDuration * 60 * 1000);
 
   const existingInterviews = await Interview.find({
-    candidate: candidateId,
+    candidate: candidate._id,
     status: { $in: ["SCHEDULED", "RESCHEDULED", "IN_PROGRESS"] },
   });
 
@@ -60,12 +143,15 @@ export const scheduleInterview = asyncHandler(async (req, res) => {
   }
 
   const interview = await Interview.create({
-    candidate: candidateId,
+    candidate: candidate._id,
     scheduledBy: req.user._id,
-    technology,
-    technologyTemplate: template._id,
-    systemPromptUsed: template.defaultSystemPrompt,
-    promptVersion: template.promptVersions.at(-1)?.version || 1,
+    technology: displayTechnology,
+    technologyTemplate: jobRole ? undefined : template._id,
+    jobRole: jobRole?._id,
+    skills: skillNames,
+    systemPromptUsed,
+    evaluationCriteria,
+    promptVersion: jobRole ? undefined : template.promptVersions.at(-1)?.version || 1,
     scheduledDate,
     scheduledTime,
     duration: newDuration,
@@ -73,17 +159,16 @@ export const scheduleInterview = asyncHandler(async (req, res) => {
     status: "SCHEDULED",
   });
 
-  const { subject, html } = emailTemplates.interviewScheduled(
-    candidate.firstName,
-    technology,
-    new Date(scheduledDate).toDateString(),
-    scheduledTime
-  );
+  const dateStr = new Date(scheduledDate).toDateString();
+  const { subject, html } = generatedPassword
+    ? emailTemplates.credentialsAndInterview(candidate.firstName, candidate.email, generatedPassword, displayTechnology, dateStr, scheduledTime, loginUrl())
+    : emailTemplates.interviewScheduled(candidate.firstName, displayTechnology, dateStr, scheduledTime, loginUrl());
+
   await createNotification({
     user: candidate._id,
     type: "INTERVIEW_SCHEDULED",
     title: "Interview Scheduled",
-    message: `Your ${technology} interview is scheduled on ${new Date(scheduledDate).toDateString()} at ${scheduledTime}.`,
+    message: `Your ${displayTechnology} interview is scheduled on ${dateStr} at ${scheduledTime}.`,
     relatedInterview: interview._id,
     sendAsEmail: true,
     emailHtml: { to: candidate.email, subject, html },
@@ -327,35 +412,38 @@ export const endInterview = asyncHandler(async (req, res) => {
   interview.endedAt = new Date();
   await interview.save();
 
+  // Persist the full plain-text transcript to disk, alongside the video/audio
+  // recording folder structure (uploads/recordings/<id>/ → uploads/transcripts/<id>/).
+  // This is separate from the per-question Transcript documents saved during
+  // the interview (see sendMessage above) — this is the raw session log.
   if (textTranscript) {
-  try {
-    const interviewDir = path.join(TRANSCRIPTS_DIR, String(interview._id));
-    fs.mkdirSync(interviewDir, { recursive: true });
-    const filePath = path.join(interviewDir, `transcript-${Date.now()}.txt`);
-    fs.writeFileSync(filePath, textTranscript, "utf-8");
+    try {
+      const interviewDir = path.join(TRANSCRIPTS_DIR, String(interview._id));
+      fs.mkdirSync(interviewDir, { recursive: true });
+      const filePath = path.join(interviewDir, `transcript-${Date.now()}.txt`);
+      fs.writeFileSync(filePath, textTranscript, "utf-8");
 
-    let recording = await Recording.findOne({ interview: interview._id });
-    if (!recording) {
-      recording = await Recording.create({ interview: interview._id, uploadStatus: "PENDING" });
+      let recording = await Recording.findOne({ interview: interview._id });
+      if (!recording) {
+        recording = await Recording.create({ interview: interview._id, uploadStatus: "PENDING" });
+      }
+      recording.transcriptPath = filePath;
+      recording.transcriptUrl = toPublicUrl(filePath);
+      await recording.save();
+
+      interview.recording = recording._id;
+      await interview.save();
+    } catch (err) {
+      // Never fail the whole "end interview" flow just because the transcript
+      // file couldn't be written — the evaluation below still runs off the
+      // in-memory textTranscript either way.
+      console.error(`⚠️ Failed to write transcript file for interview ${interview._id}:`, err.message);
     }
-    recording.transcriptPath = filePath;
-    recording.transcriptUrl = toPublicUrl(filePath);
-    await recording.save();
-
-    interview.recording = recording._id;
-    await interview.save();
-  } catch (err) {
-    console.error(`⚠️ Failed to write transcript file for interview ${interview._id}:`, err.message);
   }
-}
 
-  const evaluationCriteria = interview.technologyTemplate?.evaluationCriteria || [
-    "Technical Knowledge",
-    "Communication",
-    "Domain Knowledge",
-    "Confidence",
-    "Clarity",
-  ];
+  const evaluationCriteria = interview.evaluationCriteria?.length
+    ? interview.evaluationCriteria
+    : interview.technologyTemplate?.evaluationCriteria || DEFAULT_EVALUATION_CRITERIA;
 
   const evaluation = await evaluateInterviewTranscript({
     textTranscript,

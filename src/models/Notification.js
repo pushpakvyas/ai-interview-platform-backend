@@ -11,6 +11,7 @@ const notificationSchema = new mongoose.Schema(
         "INTERVIEW_CANCELLED",
         "INTERVIEW_REMINDER",
         "INTERVIEW_COMPLETED",
+        "INTERVIEW_EXPIRED",
         "RESULT_GENERATED",
         "GENERAL",
       ],

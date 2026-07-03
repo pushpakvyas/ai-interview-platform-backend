@@ -33,9 +33,25 @@ export async function sendEmail({ to, subject, html }) {
 }
 
 export const emailTemplates = {
-  interviewScheduled: (candidateName, technology, date, time) => ({
+  interviewScheduled: (candidateName, technology, date, time, loginUrl) => ({
     subject: "Your interview has been scheduled",
-    html: `<p>Hi ${candidateName},</p><p>Your ${technology} interview has been scheduled on <b>${date}</b> at <b>${time}</b>.</p>`,
+    html: `<p>Hi ${candidateName},</p><p>Your ${technology} interview has been scheduled on <b>${date}</b> at <b>${time}</b>.</p>${
+      loginUrl ? `<p>Log in to the platform to prepare and take your interview: <a href="${loginUrl}">${loginUrl}</a></p>` : ""
+    }`,
+  }),
+  candidateWelcome: (candidateName, email, tempPassword, loginUrl) => ({
+    subject: "Your AI Interview Platform account",
+    html: `<p>Hi ${candidateName},</p><p>An account has been created for you on the AI Interview Platform.</p>
+      <p><b>Email:</b> ${email}<br/><b>Temporary password:</b> ${tempPassword}</p>
+      <p>Log in here: <a href="${loginUrl}">${loginUrl}</a></p>
+      <p>Please keep these credentials safe.</p>`,
+  }),
+  credentialsAndInterview: (candidateName, email, tempPassword, technology, date, time, loginUrl) => ({
+    subject: "Your interview has been scheduled — account details inside",
+    html: `<p>Hi ${candidateName},</p><p>An account has been created for you on the AI Interview Platform, and your ${technology} interview has been scheduled on <b>${date}</b> at <b>${time}</b>.</p>
+      <p><b>Email:</b> ${email}<br/><b>Temporary password:</b> ${tempPassword}</p>
+      <p>Log in here to prepare and take your interview: <a href="${loginUrl}">${loginUrl}</a></p>
+      <p>Please keep these credentials safe.</p>`,
   }),
   interviewRescheduled: (candidateName, technology, date, time) => ({
     subject: "Your interview has been rescheduled",

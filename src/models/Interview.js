@@ -7,7 +7,10 @@ const interviewSchema = new mongoose.Schema(
 
     technology: { type: String, required: true },
     technologyTemplate: { type: mongoose.Schema.Types.ObjectId, ref: "TechnologyTemplate" },
+    jobRole: { type: mongoose.Schema.Types.ObjectId, ref: "JobRole" },
+    skills: [{ type: String }],
     systemPromptUsed: { type: String },
+    evaluationCriteria: { type: [String] },
     promptVersion: { type: Number },
 
     scheduledDate: { type: Date, required: true },

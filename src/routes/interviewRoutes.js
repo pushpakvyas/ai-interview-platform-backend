@@ -22,7 +22,7 @@ router.use(protect);
 router.post(
   "/",
   restrictTo("ADMIN"),
-  validate(["candidateId", "technology", "scheduledDate", "scheduledTime"]),
+  validate(["scheduledDate", "scheduledTime"]),
   scheduleInterview
 );
 router.put("/:id/reschedule", restrictTo("ADMIN"), rescheduleInterview);

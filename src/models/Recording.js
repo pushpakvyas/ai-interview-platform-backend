@@ -12,11 +12,13 @@ const recordingSchema = new mongoose.Schema(
     videoPath: { type: String },
     audioPath: { type: String },
 
-    transcriptUrl: { type: String },
-    transcriptPath: { type: String },
-
     fileSizeBytes: { type: Number },
     durationSeconds: { type: Number },
+
+    // Plain-text transcript of the full interview, written to disk when the
+    // interview ends (see endInterview in interviewController.js).
+    transcriptUrl: { type: String },
+    transcriptPath: { type: String },
 
     uploadStatus: {
       type: String,

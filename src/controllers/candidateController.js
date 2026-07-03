@@ -22,6 +22,11 @@ export const getDashboard = asyncHandler(async (req, res) => {
     .sort({ endedAt: -1 })
     .populate("score");
 
+  const missed = await Interview.find({
+    candidate: candidateId,
+    status: "EXPIRED",
+  }).sort({ scheduledDate: -1 });
+
   const todayStr = now.toDateString();
   const todaysInterview = upcoming.find(
     (iv) => new Date(iv.scheduledDate).toDateString() === todayStr
@@ -31,6 +36,7 @@ export const getDashboard = asyncHandler(async (req, res) => {
     success: true,
     upcoming,
     completed,
+    missed,
     todaysInterview: todaysInterview || null,
   });
 });

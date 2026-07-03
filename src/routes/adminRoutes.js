@@ -18,7 +18,7 @@ router.get("/dashboard", getDashboard);
 router.get("/candidates", listCandidates);
 router.post(
   "/candidates",
-  validate(["firstName", "lastName", "email", "mobile", "password"]),
+  validate(["firstName", "lastName", "email", "mobile"]),
   createCandidate
 );
 router.get("/interviews", listInterviews);

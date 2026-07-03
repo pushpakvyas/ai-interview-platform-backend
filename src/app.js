@@ -11,6 +11,8 @@ import candidateRoutes from "./routes/candidateRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import interviewRoutes from "./routes/interviewRoutes.js";
 import templateRoutes from "./routes/templateRoutes.js";
+import jobRoleRoutes from "./routes/jobRoleRoutes.js";
+import skillRoutes from "./routes/skillRoutes.js";
 import reportRoutes from "./routes/reportRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 
@@ -19,7 +21,6 @@ import { generalLimiter } from "./middleware/rateLimiter.js";
 import { UPLOAD_ROOT } from "./config/multer.js";
 
 const app = express();
-console.log(process.env.CLIENT_URL);
 
 // Security middleware
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
@@ -51,6 +52,8 @@ app.use("/api/candidate", candidateRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/interviews", interviewRoutes);
 app.use("/api/templates", templateRoutes);
+app.use("/api/job-roles", jobRoleRoutes);
+app.use("/api/skills", skillRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/notifications", notificationRoutes);
 
