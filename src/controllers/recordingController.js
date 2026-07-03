@@ -7,7 +7,7 @@ import { ApiError } from "../utils/apiError.js";
 import { UPLOAD_ROOT } from "../config/multer.js";
 
 // Build the public URL path for a file saved under UPLOAD_ROOT, served via express.static at /uploads
-function toPublicUrl(absolutePath) {
+export function toPublicUrl(absolutePath) {
   const relative = path.relative(UPLOAD_ROOT, absolutePath).split(path.sep).join("/");
   return `/uploads/${relative}`;
 }

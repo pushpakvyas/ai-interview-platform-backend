@@ -12,6 +12,9 @@ const recordingSchema = new mongoose.Schema(
     videoPath: { type: String },
     audioPath: { type: String },
 
+    transcriptUrl: { type: String },
+    transcriptPath: { type: String },
+
     fileSizeBytes: { type: Number },
     durationSeconds: { type: Number },
 

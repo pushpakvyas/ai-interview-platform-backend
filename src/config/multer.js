@@ -9,9 +9,10 @@ export const UPLOAD_ROOT = process.env.UPLOAD_DIR
 
 const RECORDINGS_DIR = path.join(UPLOAD_ROOT, "recordings");
 const RESUMES_DIR = path.join(UPLOAD_ROOT, "resumes");
+const TRANSCRIPTS_DIR = path.join(UPLOAD_ROOT, "transcripts");
 
 // Ensure upload directories exist at startup
-[UPLOAD_ROOT, RECORDINGS_DIR, RESUMES_DIR].forEach((dir) => {
+[UPLOAD_ROOT, RECORDINGS_DIR, RESUMES_DIR, TRANSCRIPTS_DIR].forEach((dir) => {
   fs.mkdirSync(dir, { recursive: true });
 });
 
@@ -53,4 +54,4 @@ export const uploadResume = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 }).single("resume");
 
-export { RECORDINGS_DIR, RESUMES_DIR };
+export { RECORDINGS_DIR, RESUMES_DIR, TRANSCRIPTS_DIR };

@@ -10,6 +10,11 @@ import { getNextInterviewerMessage, evaluateInterviewTranscript } from "../servi
 import { createNotification } from "../services/notificationService.js";
 import { emailTemplates } from "../services/emailService.js";
 import { logAudit } from "../utils/auditLogger.js";
+import fs from "fs";
+import path from "path";
+import Recording from "../models/Recording.js";
+import { TRANSCRIPTS_DIR } from "../config/multer.js";
+import { toPublicUrl } from "./recordingController.js";
 
 const MAX_WARNINGS = 3;
 
@@ -321,6 +326,28 @@ export const endInterview = asyncHandler(async (req, res) => {
   interview.status = "COMPLETED";
   interview.endedAt = new Date();
   await interview.save();
+
+  if (textTranscript) {
+  try {
+    const interviewDir = path.join(TRANSCRIPTS_DIR, String(interview._id));
+    fs.mkdirSync(interviewDir, { recursive: true });
+    const filePath = path.join(interviewDir, `transcript-${Date.now()}.txt`);
+    fs.writeFileSync(filePath, textTranscript, "utf-8");
+
+    let recording = await Recording.findOne({ interview: interview._id });
+    if (!recording) {
+      recording = await Recording.create({ interview: interview._id, uploadStatus: "PENDING" });
+    }
+    recording.transcriptPath = filePath;
+    recording.transcriptUrl = toPublicUrl(filePath);
+    await recording.save();
+
+    interview.recording = recording._id;
+    await interview.save();
+  } catch (err) {
+    console.error(`⚠️ Failed to write transcript file for interview ${interview._id}:`, err.message);
+  }
+}
 
   const evaluationCriteria = interview.technologyTemplate?.evaluationCriteria || [
     "Technical Knowledge",
