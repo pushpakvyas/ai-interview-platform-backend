@@ -19,6 +19,7 @@ import { generalLimiter } from "./middleware/rateLimiter.js";
 import { UPLOAD_ROOT } from "./config/multer.js";
 
 const app = express();
+console.log(process.env.CLIENT_URL);
 
 // Security middleware
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
