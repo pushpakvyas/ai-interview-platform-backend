@@ -97,7 +97,32 @@ export async function evaluateInterviewTranscript({ textTranscript, technology, 
     };
   }
 
+  const candidateLines = (textTranscript.match(/^Candidate:\s*(.*)$/gim) || [])
+  .map((l) => l.replace(/^Candidate:\s*/i, "").trim())
+  .filter((l) => l.length > 3 && !/^(i\s*don'?t\s*know|no idea|pass|skip|n\/?a)\.?$/i.test(l));
+
+if (candidateLines.length === 0) {
+  return {
+    technicalKnowledge: 0,
+    communication: 0,
+    domainKnowledge: 0,
+    confidence: 0,
+    clarity: 0,
+    overallScore: 0,
+    strengths: [],
+    weaknesses: ["No substantive answers were provided during the interview."],
+    improvementSuggestions: ["Attend the interview prepared to answer the interviewer's questions."],
+    hiringRecommendation: "Reject",
+    aiFeedback: "The candidate did not provide any substantive answers during this interview, so no positive evaluation could be made.",
+  };
+}
+
   const scoringPrompt = `Analyze this ${technology} developer interview transcript. Evaluate against: ${evaluationCriteria.join(", ")}.
+  Scoring rules — follow these strictly:
+- Score ONLY what the CANDIDATE actually said. Never give credit for a question just because the interviewer asked it well.
+- If a question went unanswered, was answered with a non-answer ("I don't know", silence, an unrelated remark), score that topic as 0 for technicalKnowledge/domainKnowledge — do not round up or give benefit of the doubt.
+- If the candidate skipped or failed to answer most of the questions, technicalKnowledge, domainKnowledge and overallScore must all be low (below 20), and hiringRecommendation must be "Reject", regardless of how confident or polished the small amount of speech is.
+- Base communication/confidence/clarity strictly on how the candidate actually communicated, not on assumptions.
 
 Return ONLY raw JSON (no markdown, no code fences, no extra text) matching exactly this shape:
 
