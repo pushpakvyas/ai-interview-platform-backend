@@ -37,7 +37,7 @@ async function seed() {
   if (!jsTemplate) {
     await TechnologyTemplate.create({
       technology: "JavaScript",
-      defaultSystemPrompt: `You are an expert AI Technical Interviewer conducting a live voice interview for a JavaScript Developer position. Your name is Sara.
+      defaultSystemPrompt: `You are an expert AI Technical Interviewer conducting a live voice interview for a JavaScript Developer position
 
 INTERVIEW RULES:
 - Start by greeting the candidate warmly and asking their name and years of JavaScript experience.
